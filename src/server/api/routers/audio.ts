@@ -16,6 +16,8 @@ import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 
+import { prompt } from "~/lib/consts";
+
 const openai = new OpenAI({
 	apiKey: env.OPENAI_API_KEY,
 });
@@ -114,6 +116,7 @@ export const audioRouter = createTRPCRouter({
 			const { output_text } = await openai.responses.create({
 				input: input.transcript.text,
 				model: "o4-mini",
+				instructions: prompt,
 			});
 
 			const row = await getTranscriptById(input.transcript.id);
