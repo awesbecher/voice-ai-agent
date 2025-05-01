@@ -4,7 +4,7 @@ import AudioRecorder from "~/components/recorder";
 export default async function Home() {
 	return (
 		<div>
-			<Toaster />
+			<Toaster richColors />
 			<AudioRecorder />
 		</div>
 	);

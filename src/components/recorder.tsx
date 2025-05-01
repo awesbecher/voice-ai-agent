@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { LoaderCircle, Mic } from "lucide-react";
@@ -60,6 +60,22 @@ const AudioRecorder = () => {
 		}
 	};
 
+	const [playingAudio, setPlayingAudio] = useState<HTMLAudioElement>();
+
+	useEffect(() => {
+		const audio = new Audio(generate.data);
+		setPlayingAudio(audio);
+	}, [generate.data]);
+
+	useEffect(() => {
+		if (isRecording && playingAudio) {
+			playingAudio?.pause();
+			setPlayingAudio(undefined);
+		} else {
+			playingAudio?.play();
+		}
+	}, [playingAudio, isRecording]);
+
 	const stopRecording = () => {
 		if (mediaRecorder && isRecording) {
 			mediaRecorder.onstop = () => {
@@ -96,7 +112,7 @@ const AudioRecorder = () => {
 
 	return (
 		<div className="flex h-screen flex-col items-center justify-center space-y-6">
-			<div className="rounded-full bg-black p-4">
+			<div className="fixed bottom-1 rounded-full bg-black p-4">
 				<Mic
 					onClick={isRecording ? stopRecording : startRecording}
 					className={cn(
@@ -105,32 +121,32 @@ const AudioRecorder = () => {
 					)}
 				/>
 			</div>
-			<div>
-				{transcript.isPending ? (
-					<div className="flex space-x-2">
-						<LoaderCircle className="animate-spin" />
-						<p>Transcript is generating...</p>
-					</div>
-				) : (
-					transcript.data?.text
-				)}
+			<div className="space-y-2">
+				<div>
+					{transcript.isPending ? (
+						<div className="flex space-x-2">
+							<LoaderCircle className="animate-spin" />
+							<p>Transcript is generating...</p>
+						</div>
+					) : (
+						<p className="max-w-xl text-wrap text-center">
+							{transcript.data?.text}
+						</p>
+					)}
+				</div>
+				<div>
+					{response.isPending && transcript.isSuccess ? (
+						<div className="flex space-x-2">
+							<LoaderCircle className="animate-spin" />
+							<p>Response is generating...</p>
+						</div>
+					) : (
+						<p className="max-w-xl text-wrap text-center">
+							{response.data?.text}
+						</p>
+					)}
+				</div>
 			</div>
-			<div>
-				{response.isPending && transcript.isSuccess ? (
-					<div className="flex space-x-2">
-						<LoaderCircle className="animate-spin" />
-						<p>Response is generating...</p>
-					</div>
-				) : (
-					response.data?.text
-				)}
-			</div>
-			{generate.data && (
-				// biome-ignore lint/a11y/useMediaCaption: <explanation>
-				<audio className="hidden" autoPlay>
-					<source src={generate.data} />
-				</audio>
-			)}
 		</div>
 	);
 };
