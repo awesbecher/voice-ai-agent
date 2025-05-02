@@ -110,13 +110,15 @@ export const audioRouter = createTRPCRouter({
 					text: z.string(),
 					createdAt: z.date(),
 				}),
+				instructions: z.string(),
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
+			console.log(input.instructions);
 			const { output_text } = await openai.responses.create({
 				input: input.transcript.text,
 				model: "o4-mini",
-				instructions: prompt,
+				instructions: input.instructions,
 			});
 
 			const row = await getTranscriptById(input.transcript.id);

@@ -59,4 +59,8 @@ Once you have responses to the 16 questions listed above, please thank the custo
 If you receive any requests that you cannot answer or if the caller needs assistance beyond what is outlined here, apologize and let them know that this line only topics regarding AI agents and the Powered By Agency.
 ---
 
-**End of Prompt.**`;
+**End of Prompt.**
+
+Below you can find the current conversation that you've had with the user until now:
+
+`;

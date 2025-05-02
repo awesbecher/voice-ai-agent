@@ -6,12 +6,14 @@ import { toast } from "sonner";
 import { LoaderCircle, Mic } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
+import { prompt } from "~/lib/consts";
 
 const AudioRecorder = () => {
 	const generate = api.audio.generateAudio.useMutation({});
 	const response = api.audio.generateResponse.useMutation({
 		onSuccess: (r) => {
 			if (r) {
+				setConversationContext((prev) => prev.concat(`Devin: ${r.text}\n`));
 				generate.mutate({ response: r });
 			}
 		},
@@ -23,7 +25,8 @@ const AudioRecorder = () => {
 	const transcript = api.audio.transcriptAudio.useMutation({
 		onSuccess: (t) => {
 			if (t) {
-				response.mutate({ transcript: t });
+				setConversationContext((prev) => prev.concat(`User: ${t.text}\n`));
+				response.mutate({ transcript: t, instructions: conversationContext });
 			}
 		},
 		onError: (e) => {
@@ -64,6 +67,7 @@ const AudioRecorder = () => {
 
 	useEffect(() => {
 		const audio = new Audio(generate.data);
+		audio.muted = true;
 		setPlayingAudio(audio);
 	}, [generate.data]);
 
@@ -75,6 +79,9 @@ const AudioRecorder = () => {
 			playingAudio?.play();
 		}
 	}, [playingAudio, isRecording]);
+
+	const [conversationContext, setConversationContext] =
+		useState<string>(prompt);
 
 	const stopRecording = () => {
 		if (mediaRecorder && isRecording) {
