@@ -8,7 +8,7 @@ import {
 import { OpenAI } from "openai";
 import { ElevenLabsClient, stream } from "elevenlabs";
 import { env } from "~/env";
-import { responses, transcripts, users } from "~/server/db/schema";
+import { conversations, typesEnum, users } from "~/server/db/schema";
 import { TRPCError } from "@trpc/server";
 import { getTranscriptById } from "~/server/api/routers/transcripts";
 
@@ -69,7 +69,7 @@ const getUserIdentity = async (
 
 export const audioRouter = createTRPCRouter({
 	transcriptAudio: publicProcedure
-		.input(z.object({ base64Audio: z.string() }))
+		.input(z.object({ base64Audio: z.string(), session: z.string().uuid() }))
 		.mutation(async ({ ctx, input }) => {
 			const user = await getUserIdentity(ctx);
 			const base64Data = input.base64Audio.replace(/^data:.+;base64,/, "");
@@ -93,10 +93,12 @@ export const audioRouter = createTRPCRouter({
 			});
 
 			const [transcript] = await ctx.db
-				.insert(transcripts)
+				.insert(conversations)
 				.values({
 					text,
 					user: user.ipv4,
+					sessionId: input.session,
+					type: typesEnum.enumValues[0],
 				})
 				.returning();
 
@@ -111,6 +113,7 @@ export const audioRouter = createTRPCRouter({
 					createdAt: z.date(),
 				}),
 				instructions: z.string(),
+				session: z.string().uuid(),
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
@@ -129,15 +132,16 @@ export const audioRouter = createTRPCRouter({
 				});
 			}
 
-			const [response] = await ctx.db
-				.insert(responses)
+			const [conversation] = await ctx.db
+				.insert(conversations)
 				.values({
-					generatedFrom: input.transcript.id,
 					text: output_text,
+					sessionId: input.session,
+					type: typesEnum.enumValues[1],
 				})
-				.returning({ id: responses.id, text: responses.text });
+				.returning({ id: conversations.id, text: conversations.text });
 
-			return response;
+			return conversation;
 		}),
 	generateAudio: publicProcedure
 		.input(
@@ -193,11 +197,6 @@ export const audioRouter = createTRPCRouter({
 			}
 
 			signedUrl = dataGetUrl.signedUrl;
-
-			await ctx.db
-				.update(responses)
-				.set({ url: signedUrl })
-				.where(eq(responses.id, input.response.id));
 
 			return signedUrl;
 		}),

@@ -7,6 +7,7 @@ import { LoaderCircle, Mic } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { prompt } from "~/lib/consts";
+import { v4 as uuidv4 } from "uuid";
 
 const AudioRecorder = () => {
 	const generate = api.audio.generateAudio.useMutation({});
@@ -26,7 +27,11 @@ const AudioRecorder = () => {
 		onSuccess: (t) => {
 			if (t) {
 				setConversationContext((prev) => prev.concat(`User: ${t.text}\n`));
-				response.mutate({ transcript: t, instructions: conversationContext });
+				response.mutate({
+					transcript: t,
+					session,
+					instructions: conversationContext,
+				});
 			}
 		},
 		onError: (e) => {
@@ -40,6 +45,8 @@ const AudioRecorder = () => {
 		null,
 	);
 	const audioChunksRef = useRef<Blob[]>([]);
+
+	const [session] = useState<string>(uuidv4());
 
 	const startRecording = async () => {
 		try {
@@ -72,7 +79,7 @@ const AudioRecorder = () => {
 	}, [generate.data]);
 
 	useEffect(() => {
-		if (isRecording && playingAudio) {
+		if (isRecording) {
 			playingAudio?.pause();
 			setPlayingAudio(undefined);
 		} else {
@@ -97,6 +104,7 @@ const AudioRecorder = () => {
 					if (base64Audio) {
 						transcript.mutate({
 							base64Audio,
+							session,
 						});
 
 						console.log(transcript.data);

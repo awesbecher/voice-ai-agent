@@ -2,7 +2,7 @@
 // https://orm.drizzle.team/docs/sql-schema-declaration
 
 import { relations, type SQL, sql } from "drizzle-orm";
-import { index, pgTableCreator } from "drizzle-orm/pg-core";
+import { index, pgEnum, pgTableCreator } from "drizzle-orm/pg-core";
 
 /**
  * This is an example of how to use the multi-project schema feature of Drizzle ORM. Use the same
@@ -17,33 +17,16 @@ export const users = createTable("users", (d) => ({
 	userAgent: d.text().notNull(),
 }));
 
-export const transcripts = createTable("transcripts", (d) => ({
+export const typesEnum = pgEnum("types", ["user", "agent"]);
+
+export const conversations = createTable("conversations", (d) => ({
 	id: d.uuid().notNull().primaryKey().defaultRandom(),
-	text: d.varchar({ length: 1024 }).notNull(),
+	sessionId: d.uuid().notNull(),
+	text: d.text().notNull(),
+	type: typesEnum().notNull(),
 	createdAt: d
 		.timestamp({ withTimezone: true })
 		.default(sql`CURRENT_TIMESTAMP`)
 		.notNull(),
-	user: d
-		.cidr()
-		.notNull()
-		.references(() => users.ipv4),
-}));
-
-export const responses = createTable("responses", (d) => ({
-	id: d.uuid().notNull().primaryKey().defaultRandom(),
-	text: d.varchar({ length: 1024 }).notNull(),
-	createdAt: d
-		.timestamp({ withTimezone: true })
-		.default(sql`CURRENT_TIMESTAMP`)
-		.notNull(),
-	generatedFrom: d.uuid().notNull(),
-	url: d.varchar({ length: 512 }),
-}));
-
-export const responsesRelations = relations(responses, ({ one }) => ({
-	generated: one(transcripts, {
-		fields: [responses.generatedFrom],
-		references: [transcripts.id],
-	}),
+	user: d.cidr().references(() => users.ipv4),
 }));
