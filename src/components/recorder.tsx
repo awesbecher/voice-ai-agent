@@ -74,7 +74,6 @@ const AudioRecorder = () => {
 
 	useEffect(() => {
 		const audio = new Audio(generate.data);
-		audio.muted = true;
 		setPlayingAudio(audio);
 	}, [generate.data]);
 
