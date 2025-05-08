@@ -15,7 +15,9 @@ export const env = createEnv({
 		ELEVENLABS_API_KEY: z.string(),
 		SUPABASE_PROJECT_URL: z.string(),
 		SUPABASE_API_KEY: z.string(),
-		SUPABASE_BUCKET: z.string()
+		SUPABASE_BUCKET: z.string(),
+		PLAYHT_API_KEY: z.string(),
+		PLAYHT_USER_ID: z.string(),
 	},
 
 
@@ -40,6 +42,8 @@ export const env = createEnv({
 		SUPABASE_PROJECT_URL: process.env.SUPABASE_PROJECT_URL,
 		SUPABASE_API_KEY: process.env.SUPABASE_API_KEY,
 		SUPABASE_BUCKET: process.env.SUPABASE_BUCKET,
+		PLAYHT_API_KEY: process.env.PLAYHT_API_KEY,
+		PLAYHT_USER_ID: process.env.PLAYHT_USER_ID,
 		// NEXT_PUBLIC_CLIENTVAR: process.env.NEXT_PUBLIC_CLIENTVAR,
 	},
 	/**

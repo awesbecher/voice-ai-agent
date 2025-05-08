@@ -6,9 +6,18 @@ import {
 	type createTRPCContext,
 } from "~/server/api/trpc";
 import { OpenAI } from "openai";
-import { ElevenLabsClient, stream } from "elevenlabs";
+import {
+	ElevenLabsClient as OriginalElevenLabsClient,
+	stream,
+} from "elevenlabs";
 import { env } from "~/env";
-import { conversations, typesEnum, users } from "~/server/db/schema";
+import {
+	conversations,
+	flags,
+	flagsEnum,
+	typesEnum,
+	users,
+} from "~/server/db/schema";
 import { TRPCError } from "@trpc/server";
 import { getTranscriptById } from "~/server/api/routers/transcripts";
 
@@ -16,15 +25,136 @@ import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 
-import { prompt } from "~/lib/consts";
+import { db } from "~/server/db";
 
 const openai = new OpenAI({
 	apiKey: env.OPENAI_API_KEY,
 });
 
-const elevenlabs = new ElevenLabsClient({
-	apiKey: env.ELEVENLABS_API_KEY,
-});
+class ElevenLabsClient extends OriginalElevenLabsClient {
+	async generateBlob(text: string) {
+		const { voices } = await this.voices.search();
+
+		if (!voices[0]) {
+			throw new TRPCError({
+				message: "Couldn't get voice to generate audio",
+				code: "NOT_FOUND",
+			});
+		}
+
+		// Convert NodeJS stream to Blob so we can process it better
+		const stream = await this.textToSpeech.convert(voices[0].voice_id, {
+			text,
+		});
+
+		// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+		const chunks: any = [];
+		for await (const chunk of stream) {
+			chunks.push(chunk);
+		}
+
+		const fileData = Buffer.concat(chunks);
+		const blob = new Blob([fileData], { type: "audio/mpeg" });
+
+		return blob;
+	}
+}
+
+class PlayHTClient {
+	apiKey: string;
+	userId: string;
+	constructor(apiKey: string, userId: string) {
+		this.apiKey = apiKey;
+		this.userId = userId;
+	}
+
+	async generateBlob(text: string) {
+		const response = await fetch("https://api.play.ai/api/v1/tts/stream", {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${this.apiKey}`,
+				"Content-Type": "application/json",
+				"X-USER-ID": this.userId,
+			},
+			body: JSON.stringify({
+				model: "PlayDialog",
+				text,
+				voice:
+					"s3://voice-cloning-zero-shot/0b29eab5-834f-4463-b3ad-4e6177d2b145/flynnsaad/manifest.json",
+				output_format: "mp3",
+			}),
+		});
+
+		console.log(response);
+		if (!response.ok) {
+			throw new TRPCError({
+				message: "Error from the PlayHT API",
+				code: "INTERNAL_SERVER_ERROR",
+			});
+		}
+		return await response.blob();
+	}
+}
+
+const VoiceProvider = class {
+	playHTFlag: boolean;
+	constructor(playHTFlag: boolean) {
+		this.playHTFlag = playHTFlag;
+	}
+
+	async generateAudioURL(text: string) {
+		if (this.playHTFlag) {
+			const playht = new PlayHTClient(env.PLAYHT_API_KEY, env.PLAYHT_USER_ID);
+			const blob = await playht.generateBlob(text);
+			return this.uploadBlobToSupabase(blob);
+		}
+
+		const elevenlabs = new ElevenLabsClient({
+			apiKey: env.ELEVENLABS_API_KEY,
+		});
+		const blob = await elevenlabs.generateBlob(text);
+		return this.uploadBlobToSupabase(blob);
+	}
+
+	async uploadBlobToSupabase(blob: Blob) {
+		const uuid = randomUUID();
+
+		const { data: dataUpload } = await supabase.storage
+			.from(bucket)
+			.upload(uuid, blob);
+
+		if (!dataUpload) {
+			throw new TRPCError({
+				message: "Could not upload file",
+				code: "INTERNAL_SERVER_ERROR",
+			});
+		}
+
+		const { data: dataGetUrl } = await supabase.storage
+			.from(bucket)
+			.createSignedUrl(uuid, 60 * 10);
+
+		if (!dataGetUrl) {
+			throw new TRPCError({
+				message: "Could not create signed URL",
+				code: "INTERNAL_SERVER_ERROR",
+			});
+		}
+		const { signedUrl } = dataGetUrl;
+		return signedUrl;
+	}
+};
+
+const getFlags = async () => {
+	const appFlags = await db.select().from(flags);
+	if (!appFlags) {
+		throw new TRPCError({
+			message: "Couldn't get flags",
+			code: "INTERNAL_SERVER_ERROR",
+		});
+	}
+	return appFlags;
+};
 
 const supabase = createClient(env.SUPABASE_PROJECT_URL, env.SUPABASE_API_KEY);
 
@@ -150,54 +280,16 @@ export const audioRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const { voices } = await elevenlabs.voices.search();
-
-			if (!voices[0]) {
+			const flags = await getFlags();
+			const [usePlayHTFlag] = flags.filter((f) => f.id === "usePlayHT");
+			if (!usePlayHTFlag) {
 				throw new TRPCError({
-					message: "Couldn't get voice to generate audio",
-					code: "NOT_FOUND",
-				});
-			}
-
-			// Convert NodeJS stream to Blob so we can process it better
-			const stream = await elevenlabs.textToSpeech.convert(voices[0].voice_id, {
-				text: input.response.text,
-			});
-
-			// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-			const chunks: any = [];
-			for await (const chunk of stream) {
-				chunks.push(chunk);
-			}
-
-			let signedUrl = "";
-
-			const fileData = Buffer.concat(chunks);
-			const blob = new Blob([fileData], { type: "audio/mpeg" });
-
-			const uuid = randomUUID();
-
-			const { data: dataUpload } = await supabase.storage
-				.from(bucket)
-				.upload(uuid, blob);
-			if (!dataUpload) {
-				throw new TRPCError({
-					message: "Could not upload file",
+					message: "Something went wrong!",
 					code: "INTERNAL_SERVER_ERROR",
 				});
 			}
-			const { data: dataGetUrl } = await supabase.storage
-				.from(bucket)
-				.createSignedUrl(uuid, 60 * 10);
-			if (!dataGetUrl) {
-				throw new TRPCError({
-					message: "Could not create signed URL",
-					code: "INTERNAL_SERVER_ERROR",
-				});
-			}
-
-			signedUrl = dataGetUrl.signedUrl;
-
-			return signedUrl;
+			const vp = new VoiceProvider(usePlayHTFlag.enabled);
+			const audioUrl = await vp.generateAudioURL(input.response.text);
+			return audioUrl;
 		}),
 });

@@ -30,3 +30,10 @@ export const conversations = createTable("conversations", (d) => ({
 		.notNull(),
 	user: d.cidr().references(() => users.ipv4),
 }));
+
+export const flagsEnum = pgEnum("flags", ["usePlayHT"]);
+
+export const flags = createTable("flags", (d) => ({
+	id: flagsEnum().primaryKey().unique().notNull(),
+	enabled: d.boolean().notNull(),
+}));
